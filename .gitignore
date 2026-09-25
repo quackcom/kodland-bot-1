@@ -1,0 +1,4 @@
+# Exclude .env config file
+/.env
+# Exclude __pycache__
+/__pycache__
