@@ -2,3 +2,6 @@
 /.env
 # Exclude __pycache__
 /__pycache__
+
+# Miscellanous
+misc/

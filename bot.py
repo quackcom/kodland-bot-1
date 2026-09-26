@@ -1,5 +1,4 @@
-import os, random
-import discord
+import os, random, discord
 from discord import app_commands
 from discord.ext import tasks
 from dotenv import load_dotenv
@@ -13,6 +12,9 @@ intents.message_content = True
 client = discord.Client(intents=intents, status=discord.Status.online, activity=discord.Game(onlineMessageCycle())) 
 # crea un albero dei comandi
 tree = app_commands.CommandTree(client)
+# Dai i permessi di vedere i canali e le chat vocali.
+intents.guilds = True
+intents.voice_states = True
 
 @client.event
 async def on_ready():
@@ -41,6 +43,35 @@ async def genera_password(interaction: discord.Interaction, lunghezza: int = 16)
         await interaction.response.send_message("La password generata è troppo lunga!", ephemeral=True)
         return
     await interaction.response.send_message(f"La password generata è: {password}", ephemeral=True)
+
+@tree.command(
+    name= "riproduci_musica",
+    description= "Riproduce musica nel canale scelto."
+)
+async def play_music(interaction: discord.Interaction, url: str, channel_name: str):
+    await play_audio(interaction, url, channel_name)
+
+@tree.command(
+    name= "ferma_musica",
+    description= "Ferma la musica nel canale."
+)
+async def stop_music(interaction: discord.Interaction):
+    await stop_audio(interaction)
+
+@tree.command(
+    name= "testa_o_croce",
+    description= "Testa o croce?"
+)
+@app_commands.choices(
+    choose = [
+        app_commands.Choice(name= "Testa", value="head"),
+        app_commands.Choice(name="Croce", value="back")
+    ]
+)
+async def testa_croce_cmd(interaction: discord.Interaction, choose: app_commands.Choice[str]):
+    scelta_giocatore = choose.value
+    risultato = testa_o_croce(scelta_giocatore)
+    await interaction.response.send_message(risultato, ephemeral=True)
 
 @tasks.loop(seconds=300)  # aggiorna lo stato ogni 5 minuti
 async def update_status():
