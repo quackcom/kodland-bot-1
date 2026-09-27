@@ -1,4 +1,5 @@
 import random, yt_dlp, discord, asyncio
+from configen import *
 
 possible_messages_activity = [
     "Playing with passwords",
@@ -36,6 +37,8 @@ YTDL_OPTIONS = {
 
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTIONS)
 
+config = load_config()
+
 # FFMPEG PATH
 FFMPEG_PATH = R"misc\ffmpeg.exe"
 
@@ -53,8 +56,10 @@ def gen_pass(pass_length):
 
     return password
 
-async def play_audio(interaction: discord.Interaction, url: str, channel_name: str):
+async def play_audio(interaction: discord.Interaction, url: str, channel_name: str, is_loop_pass: str, inizia_dal_secondo: int = 0):
     guild = interaction.guild
+
+    to_loop_song = bool(is_loop_pass)
 
     # Cerca il canale per nome o ID
     channel = discord.utils.get(guild.voice_channels, name=channel_name)
@@ -93,7 +98,7 @@ async def play_audio(interaction: discord.Interaction, url: str, channel_name: s
     user_agent = http_headers.get('User-Agent', 'Mozilla/5.0')
 
     FFMPEG_OPTIONS = {
-        'before_options': f'-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -headers "User-Agent: {user_agent}"',
+        'before_options': f'-ss {inizia_dal_secondo} -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -headers "User-Agent: {user_agent}"',
         'options': '-vn'
     }
 
@@ -108,16 +113,23 @@ async def play_audio(interaction: discord.Interaction, url: str, channel_name: s
 
     # Avvio riproduzione FFmpeg
     audio_source = discord.FFmpegPCMAudio(filename, executable=FFMPEG_PATH, **FFMPEG_OPTIONS)
-    vc.play(audio_source, after= lambda e: stop_audiosync(e, interaction)) # lambda e: print(f"ERRORE RIPRODUZIONE FFmpeg: {e}") if e else print("Riproduzione terminata con successo senza errori.")
+    vc.play(audio_source, after= lambda e: stop_audiounsync(e, interaction)) # lambda e: print(f"ERRORE RIPRODUZIONE FFmpeg: {e}") if e else print("Riproduzione terminata con successo senza errori.")
 
     # Aggiorna la chat confermando la riproduzione
     channel_playings["Channel_Name"] = channel_name
     channel_playings["Title"] = title
-    await interaction.followup.send(f"Riproduzione di {title} in {channel_name}")
+    if to_loop_song == True:
+        channel_playings["To_Loop_Bool"] = to_loop_song
+        channel_playings["FFMPEG_OPTS"] = FFMPEG_OPTIONS
+        channel_playings["URL"] = url
+    await interaction.followup.send(f"Riproducendo {title} in {channel_name}")
 
 async def stop_audio(interaction: discord.Interaction):
-    title = channel_playings["Title"]
-    channel_name = channel_playings["Channel_Name"]
+    try:
+        title = channel_playings["Title"]
+        channel_name = channel_playings["Channel_Name"]
+    except Exception as e:
+        pass
     wasPlaying = False
     vc = interaction.guild.voice_client
     if vc and vc.is_connected():
@@ -127,35 +139,79 @@ async def stop_audio(interaction: discord.Interaction):
         await vc.disconnect()
         if wasPlaying == True:
             await interaction.response.send_message(f"Riproduzione terminata di {title} in {channel_name}")
+            channel_playings.clear()
             return
         
         await interaction.followup.send("Disconnesso dal canale vocale!")
     else:
         await interaction.response.send_message("Non sono connesso a nessun canale vocale in questo server.", ephemeral=True)
 
-def stop_audiosync(error, interaction: discord.Interaction):
+def stop_audiounsync(error, interaction: discord.Interaction):
     if error:
         print(f"Errore riproduzione: {error}")
         return
 
     title = channel_playings.get("Title")
     channel_name = channel_playings.get("Channel_Name")
+    ffmpeg_options = channel_playings.get("FFMPEG_OPTS")
+    to_loop_bool = bool(channel_playings.get("To_Loop_Bool"))
+    url = channel_playings.get("URL")
+
     vc = interaction.guild.voice_client
     bot_loop = interaction.client.loop
 
-    async def _cleanup():
-        was_connected = vc and vc.is_connected()
-        if was_connected:
+    async def _cleanup_or_replay():
+        if not (vc and vc.is_connected()):
+            return
+
+        if to_loop_bool == True:
+            # Ri-estrazione del contenuto audio
+            try:
+                data = ytdl.extract_info(url, download=False)
+            except Exception as e:
+                await interaction.followup.send(f"Errore durante l'estrazione: {e}", ephemeral=True)
+                return
+
+            if 'entries' in data:
+                data = data['entries'][0]
+
+            filename = data['url']
+            loop_audio_source = discord.FFmpegPCMAudio(filename, executable=FFMPEG_PATH, **ffmpeg_options)
+            vc.play(loop_audio_source, after= lambda e: stop_audiounsync(e, interaction))
+        else:
             await vc.disconnect()
             await interaction.followup.send(f"Riproduzione terminata di {title} in {channel_name}")
+            channel_playings.clear()
 
-    asyncio.run_coroutine_threadsafe(_cleanup(), bot_loop)
+    asyncio.run_coroutine_threadsafe(_cleanup_or_replay(), bot_loop)
 
+async def pause_audio(interaction: discord.Interaction):
+    await interaction.response.send_message(f"Riproduzione in pausa in {channel_playings['Channel_Name']}")
+    vc = interaction.guild.voice_client
+    vc.pause()
+
+async def resume_audio(interaction: discord.Interaction):
+    await interaction.response.send_message(f"Ripresa della riproduzione in {channel_playings['Channel_Name']}")
+    vc = interaction.guild.voice_client
+    vc.resume()
 
 def testa_o_croce(selezione: str) -> str:
+    dict_hb = {
+        "head": "Testa",
+        "back": "Croce"
+    }
     random_choice = random.choice(["head", "back"])
 
     if random_choice == selezione:
-        return ("Complimenti! Hai vinto!")
+        return (f"Complimenti! Hai vinto! E' uscito {dict_hb[random_choice]}")
     elif random_choice != selezione:
-        return ("Che peccato, hai perso!")
+        return (f"Che peccato, hai perso! E' uscito {dict_hb[random_choice]}")
+
+def is_authorized(member: discord.Member, funzione: str, config: dict) -> bool:
+    ruoli_autorizzati = config.get("permissions", {}).get(funzione)
+    if not ruoli_autorizzati:
+        return True
+    if "-1" in ruoli_autorizzati:
+        return False
+    member_role_ids = {r.id for r in member.roles}
+    return any(rid in member_role_ids for rid in ruoli_autorizzati)
