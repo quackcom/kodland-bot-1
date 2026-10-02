@@ -60,12 +60,12 @@ async def genera_password(interaction: discord.Interaction, lunghezza: int = 16)
 )
 @app_commands.choices(
     to_loop = [
-        app_commands.Choice(name="Sì", value="True"),
-        app_commands.Choice(name="No", value="False")
+        app_commands.Choice(name="Sì", value="1"),
+        app_commands.Choice(name="No", value="0")
     ]
 )
 async def play_music(interaction: discord.Interaction, url: str, channel_name: str, inizia_dal_secondo: int = 0, to_loop: app_commands.Choice[str] = None):
-    is_loop_pass = to_loop.value if to_loop is not None else "False"
+    is_loop_pass = to_loop.value if to_loop is not None else "0"
     await play_audio(interaction, url, channel_name, is_loop_pass, inizia_dal_secondo)
 
 @tree.command(
@@ -128,9 +128,6 @@ async def purge(interaction: discord.Interaction, m_to_delete: int):
     description="Imposta i permessi ad usare determinati programmi."
 )
 @app_commands.choices(
-    funzioni = [
-        app_commands.Choice(name=func, value=func) for func in FUNZIONI_PROTEGGIBILI
-    ],
     scelta = [
         app_commands.Choice(name="Aggiungi", value="True"),
         app_commands.Choice(name="Rimuovi", value="False"),
@@ -138,9 +135,10 @@ async def purge(interaction: discord.Interaction, m_to_delete: int):
         app_commands.Choice(name="Tutti", value="All")
     ]
 )
-async def set_permissions(interaction: discord.Interaction, funzioni: app_commands.Choice[str], ruolo: discord.Role, scelta: app_commands.Choice[str]):
-    func_name = funzioni.value
-
+async def set_permissions(interaction: discord.Interaction, funzione: str, ruolo: discord.Role, scelta: app_commands.Choice[str]):
+    func_name = funzione
+    if len(FUNZIONI_PROTEGGIBILI) == 0:
+        await appFUNZIONI_PROTEGGIBILI()
     config.setdefault("permissions", {}).setdefault(func_name, [])
 
     # Registrazione
@@ -164,28 +162,50 @@ async def set_permissions(interaction: discord.Interaction, funzioni: app_comman
 
     # Deregistraione per nessuno
     if scelta.value == "None":
-        for role in config["permissions"][func_name]:
-            config["permissions"][func_name].remove(role)
+        config["permissions"][func_name].clear()
         config["permissions"][func_name].append("-1")
         await interaction.response.send_message(f"Tutti i ruoli sono stati rimossi e l'uso di {func_name} è ora interdetto.", ephemeral=True)
 
     # Registrazione per tutti
     if scelta.value == "All":
-        for role in config["permissions"][func_name]:
-            config["permissions"][func_name].remove(role)
+        config["permissions"][func_name].clear()
         await interaction.response.send_message(f"I permessi sono stati resettati e la funzione {func_name} è ora disponibile per tutti.", ephemeral=True)        
 
     save_config(config)
 
 @tree.command(
     name="print_cmds",
-    description="Mostra in chat tutti i comandi utilizzabili."
+    description="Mostra in chat tutti i comandi del server."
 )
 async def print_cmds(interaction: discord.Interaction):
     if len(FUNZIONI_PROTEGGIBILI) == 0:
         await appFUNZIONI_PROTEGGIBILI()
     elenco = "\n".join(f"`{nome}`" for nome in FUNZIONI_PROTEGGIBILI)
-    await interaction.response.send_message(f"**Comandi disponibili:**\n{elenco}", ephemeral=True)
+    await interaction.response.send_message(f"**Comandi nel server:**\n{elenco}", ephemeral=True)
+
+@tree.command(
+    name="print_my_cmds",
+    description="Mostra in chat i comandi utilizzabili dall'utente, in base al suo ruolo."
+)
+async def print_my_cmds(interaction: discord.Interaction):
+    if not FUNZIONI_PROTEGGIBILI:
+        await appFUNZIONI_PROTEGGIBILI()
+
+    user_role_ids = {ruolo.id for ruolo in interaction.user.roles}
+    comandi_utilizzabili = []
+
+    for func_name in FUNZIONI_PROTEGGIBILI:
+        permessi = config.get("permissions", {}).get(func_name, [])
+        if not permessi:
+            comandi_utilizzabili.append(func_name)
+        elif "-1" in permessi:
+            continue
+        elif user_role_ids & set(permessi):
+            # l'utente ha almeno un ruolo abilitato
+            comandi_utilizzabili.append(func_name)
+
+    elenco = "\n".join(f"`{nome}`" for nome in comandi_utilizzabili) or "Nessun comando disponibile."
+    await interaction.response.send_message(f"**Comandi utilizzabili:**\n{elenco}", ephemeral=True)
 
 @tasks.loop(seconds=300)  # aggiorna lo stato ogni 5 minuti
 async def update_status():

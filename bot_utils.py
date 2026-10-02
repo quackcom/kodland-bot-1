@@ -59,7 +59,7 @@ def gen_pass(pass_length):
 async def play_audio(interaction: discord.Interaction, url: str, channel_name: str, is_loop_pass: str, inizia_dal_secondo: int = 0):
     guild = interaction.guild
 
-    to_loop_song = bool(is_loop_pass)
+    to_loop_song = True if is_loop_pass == "1" else False
 
     # Cerca il canale per nome o ID
     channel = discord.utils.get(guild.voice_channels, name=channel_name)
@@ -119,6 +119,7 @@ async def play_audio(interaction: discord.Interaction, url: str, channel_name: s
     channel_playings["Channel_Name"] = channel_name
     channel_playings["Title"] = title
     if to_loop_song == True:
+        inizia_dal_secondo = 0
         channel_playings["To_Loop_Bool"] = to_loop_song
         channel_playings["FFMPEG_OPTS"] = FFMPEG_OPTIONS
         channel_playings["URL"] = url
@@ -154,7 +155,7 @@ def stop_audiounsync(error, interaction: discord.Interaction):
     title = channel_playings.get("Title")
     channel_name = channel_playings.get("Channel_Name")
     ffmpeg_options = channel_playings.get("FFMPEG_OPTS")
-    to_loop_bool = bool(channel_playings.get("To_Loop_Bool"))
+    to_loop_bool = channel_playings.get("To_Loop_Bool")
     url = channel_playings.get("URL")
 
     vc = interaction.guild.voice_client
@@ -186,14 +187,14 @@ def stop_audiounsync(error, interaction: discord.Interaction):
     asyncio.run_coroutine_threadsafe(_cleanup_or_replay(), bot_loop)
 
 async def pause_audio(interaction: discord.Interaction):
-    await interaction.response.send_message(f"Riproduzione in pausa in {channel_playings['Channel_Name']}")
     vc = interaction.guild.voice_client
     vc.pause()
+    await interaction.response.send_message(f"Riproduzione in pausa in {channel_playings['Channel_Name']} di {channel_playings['Title']}")
 
 async def resume_audio(interaction: discord.Interaction):
-    await interaction.response.send_message(f"Ripresa della riproduzione in {channel_playings['Channel_Name']}")
     vc = interaction.guild.voice_client
     vc.resume()
+    await interaction.response.send_message(f"Ripresa della riproduzione in {channel_playings['Channel_Name']} di {channel_playings['Title']}")
 
 def testa_o_croce(selezione: str) -> str:
     dict_hb = {

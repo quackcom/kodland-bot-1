@@ -3,8 +3,8 @@
 # Exclude __pycache__
 /__pycache__
 
-# Miscellanous
+# Exclude miscellanous
 misc/
 
-# Test .botconfig
+# Exclude .botconfig
 /.botconfig
